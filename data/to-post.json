@@ -1,4 +1,12 @@
 {
-  "posts": []
+  "image_path": "https://rsm.mypccdev.com/wp-content/uploads/2025/03/hero-1.jpg",
+  "description": "Join Us May 11th 6pm at Woodlands Coffee!",
+  # The post date needs to follow this syntax
+  "post_date": "2026-04-286 10:00"
+  # Optional
+  "extra_data": {
+    "custom_accessibility_caption": "Accessibility caption",
+    "like_and_view_counts_disabled": 0,
+    "disable_comments": 0
+  },
 }
-
