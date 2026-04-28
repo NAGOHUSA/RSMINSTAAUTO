@@ -7,6 +7,10 @@ on:
   workflow_dispatch:
   # Allows manual trigger from GitHub UI
 
+env:
+  # Opt into Node.js 24 for all JavaScript actions
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   post-media:
     runs-on: ubuntu-latest
@@ -14,9 +18,12 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      # v4 currently uses Node.js 20, but will be updated
+      # Check for v5 if available by June 2026
     
     - name: Set up Python
       uses: actions/setup-python@v5
+      # v5 uses Node.js 20, check for v6 closer to June 2026
       with:
         python-version: '3.9'
     
@@ -32,6 +39,7 @@ jobs:
         mkdir -p logs
         mkdir -p data/scheduled_posts
         mkdir -p src/scripts
+        mkdir -p assets
     
     - name: Make scripts executable
       run: |
@@ -50,6 +58,7 @@ jobs:
     - name: Upload logs
       if: always()
       uses: actions/upload-artifact@v4
+      # v4 uses Node.js 20, check for v5 by June 2026
       with:
         name: post-activity-logs
         path: logs/
