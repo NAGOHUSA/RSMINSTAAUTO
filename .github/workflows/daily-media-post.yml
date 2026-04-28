@@ -2,7 +2,6 @@ name: Daily Media Post Schedule
 
 on:
   schedule:
-    # Runs at 9 AM EST (14:00 UTC) every day
     - cron: '0 14 * * *'
   workflow_dispatch:
 
@@ -35,8 +34,8 @@ jobs:
     
     - name: Run media post
       env:
-        INSTAGRAM_SESSION_ID: ${{ secrets.INSTAGRAM_SESSION_ID }}
-        INSTAGRAM_CSRF_TOKEN: ${{ secrets.INSTAGRAM_CSRF_TOKEN }}
+        INSTAGRAM_USERNAME: ${{ secrets.INSTAGRAM_USERNAME }}
+        INSTAGRAM_PASSWORD: ${{ secrets.INSTAGRAM_PASSWORD }}
       run: |
         python github_actions_post.py
     
@@ -46,12 +45,4 @@ jobs:
       with:
         name: post-activity-logs
         path: logs/
-        retention-days: 7
-    
-    - name: Upload processed posts data
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: processed-posts-data
-        path: data/processed_posts/
         retention-days: 7
