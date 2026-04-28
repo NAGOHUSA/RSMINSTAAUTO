@@ -72,7 +72,7 @@ def should_post_today(post_date_str: str, logger: logging.Logger) -> bool:
         post_datetime = datetime.strptime(post_date_str, "%Y-%m-%d %H:%M")
         post_datetime = post_datetime.replace(tzinfo=tz.gettz("US/Eastern"))
         now_est = datetime.now(tz.gettz("US/Eastern"))
-        return post_datetime.date() == now_est.date()
+        return True  # Force post now for testing
     except ValueError as e:
         logger.error(f"Error parsing post date '{post_date_str}': {e}")
         logger.error("Date format should be: YYYY-MM-DD HH:MM (e.g., 2026-04-28 08:45)")
