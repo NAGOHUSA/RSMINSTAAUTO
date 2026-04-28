@@ -1,17 +1,30 @@
-# Virtual Environment
-venv
-.venv
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 
-# Pycache
-__pycache__
+# Logs
+logs/
+*.log
 
-# Environment Variables
-.env.local
+# Processed posts (keep sample but ignore processed)
+data/processed_posts/
+data/scheduled_posts/
+*.backup
+
+# Environment
+venv/
+env/
 .env
 
-# Log files
-**/*.log
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# post and generated images
-data/scheduled_posts/*.json
-data/generated_images/*.jpg
+# OS
+.DS_Store
+Thumbs.db
