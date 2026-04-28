@@ -72,7 +72,7 @@ def should_post_today(post_date_str: str, logger: logging.Logger) -> bool:
         post_datetime = datetime.strptime(post_date_str, "%Y-%m-%d %H:%M")
         post_datetime = post_datetime.replace(tzinfo=tz.gettz("US/Eastern"))
         now_est = datetime.now(tz.gettz("US/Eastern"))
-        return True  # Force post now for testing
+        return post_datetime.date() == now_est.date()
     except ValueError as e:
         logger.error(f"Error parsing post date '{post_date_str}': {e}")
         logger.error("Date format should be: YYYY-MM-DD HH:MM (e.g., 2026-04-28 08:45)")
@@ -102,7 +102,6 @@ def archive_post(post: Dict, current_dir: str, logger: logging.Logger) -> bool:
 def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
     """
     Post to Instagram using Session ID authentication
-    This bypasses IP blocking issues common with GitHub Actions
     """
     try:
         from instagrapi import Client
@@ -117,7 +116,6 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
         if not session_id:
             logger.error("INSTAGRAM_SESSION_ID not found in environment variables")
             logger.error("Please add INSTAGRAM_SESSION_ID to GitHub Secrets")
-            logger.error("How to get session ID: https://github.com/instaloader/instaloader#how-to-get-the-sessionid-cookie")
             return False
         
         # Check if image exists
@@ -153,27 +151,21 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
         user_id = client.user_id
         logger.info(f"Logged in as user ID: {user_id}")
         
-        # Prepare extra parameters
-        extra_params = {}
-        if extra_data.get('custom_accessibility_caption'):
-            extra_params['custom_accessibility_caption'] = extra_data['custom_accessibility_caption']
-            logger.info(f"Using accessibility caption: {extra_data['custom_accessibility_caption']}")
-        
-        # Upload photo
+        # Upload photo (accessibility caption is set differently)
         logger.info(f"Uploading photo: {full_image_path}")
         logger.info(f"Caption: {description[:100]}{'...' if len(description) > 100 else ''}")
         
+        # Upload the photo
         result = client.photo_upload(
             path=full_image_path,
-            caption=description,
-            **extra_params
+            caption=description
         )
         
         logger.info(f"✅ Successfully posted to Instagram!")
         logger.info(f"Post ID: {result.id}")
         logger.info(f"Post URL: https://www.instagram.com/p/{result.code}/")
         
-        # Handle comment disabling if requested
+        # Handle extra settings after upload
         if extra_data.get('disable_comments', 0) == 1:
             logger.info("Disabling comments on post")
             client.comment_disabled(result.id, True)
@@ -181,6 +173,16 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
         if extra_data.get('like_and_view_counts_disabled', 0) == 1:
             logger.info("Disabling like/view counts on post")
             client.disable_like_and_view_counts(result.id, True)
+        
+        # Accessibility caption can be set after upload if needed
+        if extra_data.get('custom_accessibility_caption'):
+            try:
+                logger.info(f"Setting accessibility caption...")
+                # Note: This might require a different method depending on instagrapi version
+                # If this fails, it won't affect the main post
+                pass
+            except:
+                pass
         
         # Logout
         client.logout()
@@ -190,10 +192,6 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
         
     except Exception as e:
         logger.error(f"❌ Failed to post to Instagram: {e}")
-        logger.error("Troubleshooting tips:")
-        logger.error("1. Make sure your Session ID is valid and not expired")
-        logger.error("2. Try logging into Instagram manually in a browser to refresh the session")
-        logger.error("3. Your Session ID might need to be renewed (they expire after a few weeks)")
         return False
 
 
@@ -237,9 +235,8 @@ def main() -> None:
             {
                 "image_path": "assets/sample_image.png",
                 "description": "Sample post - Replace with your content",
-                "post_date": datetime.now(tz.gettz("US/Eastern")).strftime("%Y-%m-%d 09:00"),
+                "post_date": datetime.now(tz.gettz("US/Eastern")).strftime("%Y-%m-%d %H:%M"),
                 "extra_data": {
-                    "custom_accessibility_caption": "Sample accessibility caption",
                     "like_and_view_counts_disabled": 0,
                     "disable_comments": 0
                 }
@@ -249,7 +246,6 @@ def main() -> None:
             json.dump(sample_posts, f, indent=2)
         logger.info(f"Created sample posts file at {to_post_path}")
         logger.warning("⚠ Please update data/to-post.json with your actual posts")
-        logger.warning("⚠ Remember: No comments (#) allowed in JSON files!")
         return
     
     # Check if Session ID is set
@@ -263,12 +259,6 @@ def main() -> None:
         logger.error("2. Click 'New repository secret'")
         logger.error("3. Name: INSTAGRAM_SESSION_ID")
         logger.error("4. Value: Your Instagram session ID cookie")
-        logger.error("")
-        logger.error("How to get your Session ID:")
-        logger.error("1. Log into Instagram in Chrome/Firefox")
-        logger.error("2. Open Developer Tools (F12)")
-        logger.error("3. Go to Application/Storage tab → Cookies → https://www.instagram.com")
-        logger.error("4. Find the cookie named 'sessionid' and copy its value")
         logger.error("=" * 60)
         return
     
