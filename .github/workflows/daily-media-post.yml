@@ -3,58 +3,62 @@ name: Daily Media Post Schedule
 on:
   schedule:
     # Runs at 9 AM EST (14:00 UTC) every day
-    # Note: EST is UTC-5, so 9 AM EST = 14:00 UTC
     - cron: '0 14 * * *'
   workflow_dispatch:
-    # Allows manual triggering of the workflow
+  # Allows manual trigger from GitHub UI
 
 jobs:
-  run-media-post:
+  post-media:
     runs-on: ubuntu-latest
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4  # Also update checkout to v4 for best practices
+      uses: actions/checkout@v4
     
     - name: Set up Python
-      uses: actions/setup-python@v5  # Update to v5 for Python setup
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
     
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install python-crontab python-dateutil
-        # Add any other dependencies your script needs
-        # pip install -r requirements.txt  # If you have a requirements file
+        pip install python-dateutil
+        # Add any other dependencies your media posting needs
+        # pip install requests instagrapi or whatever you use
     
     - name: Create required directories
       run: |
         mkdir -p logs
         mkdir -p data/scheduled_posts
+        mkdir -p src/scripts
     
-    - name: Run media post scheduler
+    - name: Make scripts executable
+      run: |
+        chmod +x src/scripts/*.sh 2>/dev/null || true
+        chmod +x src/scripts/*.fish 2>/dev/null || true
+    
+    - name: Run media post
       env:
-        # Add any environment variables your script needs
-        # For example:
+        SHELL: /bin/bash
+        # Add any API keys or credentials as GitHub Secrets
         # INSTAGRAM_USERNAME: ${{ secrets.INSTAGRAM_USERNAME }}
         # INSTAGRAM_PASSWORD: ${{ secrets.INSTAGRAM_PASSWORD }}
-        SHELL: /bin/bash
       run: |
-        main.py  # Replace with your actual script filename
+        python github_actions_post.py
     
     - name: Upload logs
       if: always()
-      uses: actions/upload-artifact@v4  # Changed from v3 to v4
+      uses: actions/upload-artifact@v4
       with:
         name: post-activity-logs
         path: logs/
         retention-days: 7
     
-    - name: Upload scheduled posts data
+    - name: Upload processed posts data
       if: always()
-      uses: actions/upload-artifact@v4  # Changed from v3 to v4
+      uses: actions/upload-artifact@v4
       with:
-        name: scheduled-posts-data
-        path: data/scheduled_posts/
+        name: processed-posts-data
+        path: data/processed_posts/
         retention-days: 7
