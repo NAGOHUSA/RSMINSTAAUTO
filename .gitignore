@@ -11,13 +11,13 @@ logs/
 
 # Processed posts (keep sample but ignore processed)
 data/processed_posts/
-data/scheduled_posts/
 *.backup
 
 # Environment
 venv/
 env/
 .env
+.venv
 
 # IDE
 .vscode/
@@ -28,3 +28,7 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Secrets
+config.py
+secrets.py
