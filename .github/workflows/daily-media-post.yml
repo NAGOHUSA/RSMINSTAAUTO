@@ -14,12 +14,10 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
+      uses: actions/checkout@v4  # Also update checkout to v4 for best practices
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5  # Update to v5 for Python setup
       with:
         python-version: '3.9'
     
@@ -47,7 +45,7 @@ jobs:
     
     - name: Upload logs
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # Changed from v3 to v4
       with:
         name: post-activity-logs
         path: logs/
@@ -55,7 +53,7 @@ jobs:
     
     - name: Upload scheduled posts data
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # Changed from v3 to v4
       with:
         name: scheduled-posts-data
         path: data/scheduled_posts/
