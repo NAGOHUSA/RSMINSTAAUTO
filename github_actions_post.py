@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 GitHub Actions Instagram Auto-Poster
-Uses Session ID authentication to bypass IP blocking
+Uses Session ID and CSRF token for authentication
 """
 
 import json
@@ -50,7 +50,6 @@ def load_posts(posts_file_path: str, logger: logging.Logger) -> List[Dict]:
             content = f.read()
             posts_data = json.loads(content)
         
-        # Handle both array format and single object format
         if isinstance(posts_data, dict):
             posts_data = [posts_data]
             logger.info("Converted single post object to list format")
@@ -62,7 +61,6 @@ def load_posts(posts_file_path: str, logger: logging.Logger) -> List[Dict]:
         return []
     except json.JSONDecodeError as e:
         logger.error(f"Error parsing JSON from {posts_file_path}: {e}")
-        logger.error("Make sure your JSON file doesn't have comments (#) and uses double quotes")
         return []
 
 
@@ -75,7 +73,6 @@ def should_post_today(post_date_str: str, logger: logging.Logger) -> bool:
         return post_datetime.date() == now_est.date()
     except ValueError as e:
         logger.error(f"Error parsing post date '{post_date_str}': {e}")
-        logger.error("Date format should be: YYYY-MM-DD HH:MM (e.g., 2026-04-28 08:45)")
         return False
 
 
@@ -101,21 +98,19 @@ def archive_post(post: Dict, current_dir: str, logger: logging.Logger) -> bool:
 
 def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
     """
-    Post to Instagram using Session ID authentication
+    Post to Instagram using Session ID and CSRF token
     """
     try:
         from instagrapi import Client
         
         description = post.get('description', '')
         image_path = post.get('image_path', '')
-        extra_data = post.get('extra_data', {})
         
         # Get session ID from environment variable
         session_id = os.environ.get('INSTAGRAM_SESSION_ID')
         
         if not session_id:
             logger.error("INSTAGRAM_SESSION_ID not found in environment variables")
-            logger.error("Please add INSTAGRAM_SESSION_ID to GitHub Secrets")
             return False
         
         # Check if image exists
@@ -129,10 +124,10 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
         logger.info("Initializing Instagram client...")
         client = Client()
         
-        # Set user agent to look like a real browser
+        # Set up device and user agent properly
         client.set_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         
-        # Set device settings to look like a real phone
+        # Set device settings
         client.set_device({
             "app_version": "269.0.0.18.71",
             "android_version": 26,
@@ -143,46 +138,35 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
             "cpu": "qcom"
         })
         
+        # Login with session ID
         logger.info("Logging in with Session ID...")
         client.login_by_sessionid(session_id)
         logger.info("✅ Successfully logged in with Session ID")
         
-        # Get user info to confirm login
+        # Get user info
         user_id = client.user_id
         logger.info(f"Logged in as user ID: {user_id}")
         
-        # Upload photo (accessibility caption is set differently)
-        logger.info(f"Uploading photo: {full_image_path}")
-        logger.info(f"Caption: {description[:100]}{'...' if len(description) > 100 else ''}")
+        # Small delay before upload
+        import time
+        time.sleep(2)
         
-        # Upload the photo
+        # Upload photo
+        logger.info(f"Uploading photo: {full_image_path}")
+        logger.info(f"Caption: {description[:100]}...")
+        
         result = client.photo_upload(
             path=full_image_path,
-            caption=description
+            caption=description,
+            extra_data={
+                "like_and_view_counts_disabled": 0,
+                "disable_comments": 0
+            }
         )
         
-        logger.info(f"✅ Successfully posted to Instagram!")
+        logger.info(f"✅ SUCCESS! Posted to Instagram!")
         logger.info(f"Post ID: {result.id}")
         logger.info(f"Post URL: https://www.instagram.com/p/{result.code}/")
-        
-        # Handle extra settings after upload
-        if extra_data.get('disable_comments', 0) == 1:
-            logger.info("Disabling comments on post")
-            client.comment_disabled(result.id, True)
-        
-        if extra_data.get('like_and_view_counts_disabled', 0) == 1:
-            logger.info("Disabling like/view counts on post")
-            client.disable_like_and_view_counts(result.id, True)
-        
-        # Accessibility caption can be set after upload if needed
-        if extra_data.get('custom_accessibility_caption'):
-            try:
-                logger.info(f"Setting accessibility caption...")
-                # Note: This might require a different method depending on instagrapi version
-                # If this fails, it won't affect the main post
-                pass
-            except:
-                pass
         
         # Logout
         client.logout()
@@ -192,19 +176,48 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
         
     except Exception as e:
         logger.error(f"❌ Failed to post to Instagram: {e}")
-        return False
+        logger.error("Trying alternative method...")
+        
+        # Alternative method using settings
+        try:
+            from instagrapi import Client
+            
+            client = Client()
+            session_id = os.environ.get('INSTAGRAM_SESSION_ID')
+            
+            # Set settings before login
+            client.set_settings({
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "csrf_token": session_id.split('%')[0] if '%' in session_id else session_id
+            })
+            
+            client.login_by_sessionid(session_id)
+            
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            full_image_path = os.path.join(current_dir, post.get('image_path', ''))
+            
+            result = client.photo_upload(
+                path=full_image_path,
+                caption=post.get('description', '')
+            )
+            
+            logger.info(f"✅ SUCCESS with alternative method!")
+            logger.info(f"Post URL: https://www.instagram.com/p/{result.code}/")
+            return True
+            
+        except Exception as e2:
+            logger.error(f"Alternative method also failed: {e2}")
+            return False
 
 
 def update_posts_file(all_posts: List[Dict], remaining_posts: List[Dict], 
                      to_post_path: str, logger: logging.Logger) -> None:
     """Update the main posts file by removing posted items"""
     try:
-        # Backup original
         backup_path = to_post_path + ".backup"
         shutil.copy(to_post_path, backup_path)
         logger.info(f"Created backup at {backup_path}")
         
-        # Write remaining posts
         with open(to_post_path, 'w') as f:
             json.dump(remaining_posts, f, indent=2)
         
@@ -217,7 +230,7 @@ def main() -> None:
     """Main function for GitHub Actions Instagram posting"""
     logger = setup_logging()
     logger.info("=" * 60)
-    logger.info("Instagram Auto-Poster Starting (Session ID Mode)")
+    logger.info("Instagram Auto-Poster Starting")
     logger.info(f"Run time: {datetime.now(tz.gettz('US/Eastern')).strftime('%Y-%m-%d %H:%M:%S %Z')}")
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -226,26 +239,6 @@ def main() -> None:
     # Check if posts file exists
     if not os.path.exists(to_post_path):
         logger.error(f"No posts file found at {to_post_path}")
-        logger.info("Creating sample posts file for testing...")
-        
-        os.makedirs(os.path.dirname(to_post_path), exist_ok=True)
-        os.makedirs(os.path.join(current_dir, "assets"), exist_ok=True)
-        
-        sample_posts = [
-            {
-                "image_path": "assets/sample_image.png",
-                "description": "Sample post - Replace with your content",
-                "post_date": datetime.now(tz.gettz("US/Eastern")).strftime("%Y-%m-%d %H:%M"),
-                "extra_data": {
-                    "like_and_view_counts_disabled": 0,
-                    "disable_comments": 0
-                }
-            }
-        ]
-        with open(to_post_path, 'w') as f:
-            json.dump(sample_posts, f, indent=2)
-        logger.info(f"Created sample posts file at {to_post_path}")
-        logger.warning("⚠ Please update data/to-post.json with your actual posts")
         return
     
     # Check if Session ID is set
@@ -253,12 +246,6 @@ def main() -> None:
     if not session_id:
         logger.error("=" * 60)
         logger.error("INSTAGRAM_SESSION_ID is not set in GitHub Secrets!")
-        logger.error("")
-        logger.error("To fix this:")
-        logger.error("1. Go to your repository Settings → Secrets and variables → Actions")
-        logger.error("2. Click 'New repository secret'")
-        logger.error("3. Name: INSTAGRAM_SESSION_ID")
-        logger.error("4. Value: Your Instagram session ID cookie")
         logger.error("=" * 60)
         return
     
@@ -276,7 +263,6 @@ def main() -> None:
     for post in all_posts:
         post_date = post.get('post_date')
         if not post_date:
-            logger.warning(f"Post missing 'post_date' field: {post.get('description', 'Unknown')}")
             remaining_posts.append(post)
             continue
         
@@ -285,7 +271,6 @@ def main() -> None:
             logger.info(f"📅 Post scheduled for today: {post_date}")
         else:
             remaining_posts.append(post)
-            logger.debug(f"Post not scheduled for today: {post_date}")
     
     if not posts_to_post:
         logger.info("No posts scheduled for today")
@@ -297,17 +282,14 @@ def main() -> None:
     
     for post in posts_to_post:
         logger.info("-" * 40)
-        logger.info(f"Processing post scheduled for {post.get('post_date')}")
-        logger.info(f"Description: {post.get('description', 'No description')[:100]}")
-        logger.info(f"Image: {post.get('image_path', 'No image')}")
+        logger.info(f"Processing post for {post.get('post_date')}")
+        logger.info(f"Description: {post.get('description', '')[:100]}")
         
-        # Attempt to post
         if post_to_instagram(post, logger):
             successful_posts.append(post)
             archive_post(post, current_dir, logger)
         else:
             failed_posts.append(post)
-            logger.error(f"Failed to post, will retry tomorrow")
             remaining_posts.append(post)
     
     # Update the main posts file
@@ -318,15 +300,11 @@ def main() -> None:
     logger.info("=" * 60)
     logger.info("POSTING SUMMARY")
     logger.info("=" * 60)
-    logger.info(f"Total posts checked: {len(all_posts)}")
-    logger.info(f"Scheduled for today: {len(posts_to_post)}")
-    logger.info(f"✅ Successfully posted: {len(successful_posts)}")
+    logger.info(f"Total posts: {len(all_posts)}")
+    logger.info(f"Scheduled today: {len(posts_to_post)}")
+    logger.info(f"✅ Successful: {len(successful_posts)}")
     logger.info(f"❌ Failed: {len(failed_posts)}")
-    logger.info(f"Remaining for future: {len(remaining_posts)}")
     logger.info("=" * 60)
-    
-    if successful_posts:
-        logger.info("🎉 Success! Check your Instagram feed for the new post!")
     
     if failed_posts:
         sys.exit(1)
