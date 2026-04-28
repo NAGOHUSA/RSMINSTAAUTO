@@ -5,10 +5,8 @@ on:
     # Runs at 9 AM EST (14:00 UTC) every day
     - cron: '0 14 * * *'
   workflow_dispatch:
-  # Allows manual trigger from GitHub UI
 
 env:
-  # Opt into Node.js 24 to silence deprecation warnings
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -37,8 +35,7 @@ jobs:
     
     - name: Run media post
       env:
-        INSTAGRAM_USERNAME: ${{ secrets.INSTAGRAM_USERNAME }}
-        INSTAGRAM_PASSWORD: ${{ secrets.INSTAGRAM_PASSWORD }}
+        INSTAGRAM_SESSION_ID: ${{ secrets.INSTAGRAM_SESSION_ID }}
       run: |
         python github_actions_post.py
     
