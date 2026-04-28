@@ -36,6 +36,7 @@ jobs:
     - name: Run media post
       env:
         INSTAGRAM_SESSION_ID: ${{ secrets.INSTAGRAM_SESSION_ID }}
+        INSTAGRAM_CSRF_TOKEN: ${{ secrets.INSTAGRAM_CSRF_TOKEN }}
       run: |
         python github_actions_post.py
     
