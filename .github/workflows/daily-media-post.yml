@@ -41,7 +41,7 @@ jobs:
         # INSTAGRAM_PASSWORD: ${{ secrets.INSTAGRAM_PASSWORD }}
         SHELL: /bin/bash
       run: |
-        python your_script_name.py  # Replace with your actual script filename
+        main.py  # Replace with your actual script filename
     
     - name: Upload logs
       if: always()
