@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 GitHub Actions Instagram Auto-Poster
-Posts scheduled content to Instagram at specified times
+Uses Session ID authentication to bypass IP blocking
 """
 
 import json
@@ -101,7 +101,8 @@ def archive_post(post: Dict, current_dir: str, logger: logging.Logger) -> bool:
 
 def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
     """
-    Post to Instagram using instagrapi
+    Post to Instagram using Session ID authentication
+    This bypasses IP blocking issues common with GitHub Actions
     """
     try:
         from instagrapi import Client
@@ -110,13 +111,13 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
         image_path = post.get('image_path', '')
         extra_data = post.get('extra_data', {})
         
-        # Get credentials from environment variables
-        username = os.environ.get('INSTAGRAM_USERNAME')
-        password = os.environ.get('INSTAGRAM_PASSWORD')
+        # Get session ID from environment variable
+        session_id = os.environ.get('INSTAGRAM_SESSION_ID')
         
-        if not username or not password:
-            logger.error("Instagram credentials not found in environment variables")
-            logger.error("Please set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in GitHub Secrets")
+        if not session_id:
+            logger.error("INSTAGRAM_SESSION_ID not found in environment variables")
+            logger.error("Please add INSTAGRAM_SESSION_ID to GitHub Secrets")
+            logger.error("How to get session ID: https://github.com/instaloader/instaloader#how-to-get-the-sessionid-cookie")
             return False
         
         # Check if image exists
@@ -127,10 +128,30 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
             logger.error(f"Image not found: {full_image_path}")
             return False
         
-        logger.info(f"Logging into Instagram as: {username}")
+        logger.info("Initializing Instagram client...")
         client = Client()
-        client.login(username, password)
-        logger.info("Successfully logged into Instagram")
+        
+        # Set user agent to look like a real browser
+        client.set_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        
+        # Set device settings to look like a real phone
+        client.set_device({
+            "app_version": "269.0.0.18.71",
+            "android_version": 26,
+            "android_release": "8.0.0",
+            "manufacturer": "OnePlus",
+            "device": "ONEPLUS A3010",
+            "model": "ONEPLUS A3010",
+            "cpu": "qcom"
+        })
+        
+        logger.info("Logging in with Session ID...")
+        client.login_by_sessionid(session_id)
+        logger.info("✅ Successfully logged in with Session ID")
+        
+        # Get user info to confirm login
+        user_id = client.user_id
+        logger.info(f"Logged in as user ID: {user_id}")
         
         # Prepare extra parameters
         extra_params = {}
@@ -140,7 +161,7 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
         
         # Upload photo
         logger.info(f"Uploading photo: {full_image_path}")
-        logger.info(f"Caption: {description}")
+        logger.info(f"Caption: {description[:100]}{'...' if len(description) > 100 else ''}")
         
         result = client.photo_upload(
             path=full_image_path,
@@ -161,11 +182,18 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
             logger.info("Disabling like/view counts on post")
             client.disable_like_and_view_counts(result.id, True)
         
+        # Logout
         client.logout()
+        logger.info("Logged out successfully")
+        
         return True
         
     except Exception as e:
         logger.error(f"❌ Failed to post to Instagram: {e}")
+        logger.error("Troubleshooting tips:")
+        logger.error("1. Make sure your Session ID is valid and not expired")
+        logger.error("2. Try logging into Instagram manually in a browser to refresh the session")
+        logger.error("3. Your Session ID might need to be renewed (they expire after a few weeks)")
         return False
 
 
@@ -191,7 +219,7 @@ def main() -> None:
     """Main function for GitHub Actions Instagram posting"""
     logger = setup_logging()
     logger.info("=" * 60)
-    logger.info("Instagram Auto-Poster Starting")
+    logger.info("Instagram Auto-Poster Starting (Session ID Mode)")
     logger.info(f"Run time: {datetime.now(tz.gettz('US/Eastern')).strftime('%Y-%m-%d %H:%M:%S %Z')}")
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -224,6 +252,26 @@ def main() -> None:
         logger.warning("⚠ Remember: No comments (#) allowed in JSON files!")
         return
     
+    # Check if Session ID is set
+    session_id = os.environ.get('INSTAGRAM_SESSION_ID')
+    if not session_id:
+        logger.error("=" * 60)
+        logger.error("INSTAGRAM_SESSION_ID is not set in GitHub Secrets!")
+        logger.error("")
+        logger.error("To fix this:")
+        logger.error("1. Go to your repository Settings → Secrets and variables → Actions")
+        logger.error("2. Click 'New repository secret'")
+        logger.error("3. Name: INSTAGRAM_SESSION_ID")
+        logger.error("4. Value: Your Instagram session ID cookie")
+        logger.error("")
+        logger.error("How to get your Session ID:")
+        logger.error("1. Log into Instagram in Chrome/Firefox")
+        logger.error("2. Open Developer Tools (F12)")
+        logger.error("3. Go to Application/Storage tab → Cookies → https://www.instagram.com")
+        logger.error("4. Find the cookie named 'sessionid' and copy its value")
+        logger.error("=" * 60)
+        return
+    
     # Load all posts
     all_posts = load_posts(to_post_path, logger)
     
@@ -248,6 +296,10 @@ def main() -> None:
         else:
             remaining_posts.append(post)
             logger.debug(f"Post not scheduled for today: {post_date}")
+    
+    if not posts_to_post:
+        logger.info("No posts scheduled for today")
+        return
     
     # Post each scheduled item
     successful_posts = []
@@ -283,10 +335,12 @@ def main() -> None:
     logger.info(f"Remaining for future: {len(remaining_posts)}")
     logger.info("=" * 60)
     
+    if successful_posts:
+        logger.info("🎉 Success! Check your Instagram feed for the new post!")
+    
     if failed_posts:
         sys.exit(1)
     else:
-        logger.info("All scheduled posts processed successfully!")
         sys.exit(0)
 
 
