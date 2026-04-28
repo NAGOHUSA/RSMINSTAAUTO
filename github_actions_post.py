@@ -17,13 +17,6 @@ from dateutil import tz
 # Add the src directory to the module search path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
-try:
-    from src import logger_config, post_list
-except ImportError as e:
-    print(f"Error importing src modules: {e}")
-    print("Make sure your src directory contains logger_config.py and post_list.py")
-    sys.exit(1)
-
 
 def setup_logging() -> logging.Logger:
     """Setup logging for GitHub Actions run"""
@@ -31,7 +24,7 @@ def setup_logging() -> logging.Logger:
     log_path = os.path.join(current_dir, "logs", "post-activity.log")
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     
-    # Simple logging configuration since logger_config might have dependencies
+    # Simple logging configuration
     logger = logging.getLogger("media_post")
     logger.setLevel(logging.INFO)
     
@@ -58,7 +51,16 @@ def load_posts(posts_file_path: str, logger: logging.Logger) -> List[Dict]:
     """Load posts from JSON file"""
     try:
         with open(posts_file_path, 'r') as f:
-            posts_data = json.load(f)
+            content = f.read()
+            # Parse JSON
+            posts_data = json.loads(content)
+        
+        # Handle both array format and single object format
+        if isinstance(posts_data, dict):
+            # Single post object, convert to list
+            posts_data = [posts_data]
+            logger.info("Converted single post object to list format")
+        
         logger.info(f"Successfully loaded {len(posts_data)} posts from {posts_file_path}")
         return posts_data
     except FileNotFoundError:
@@ -66,6 +68,7 @@ def load_posts(posts_file_path: str, logger: logging.Logger) -> List[Dict]:
         return []
     except json.JSONDecodeError as e:
         logger.error(f"Error parsing JSON from {posts_file_path}: {e}")
+        logger.error("Make sure your JSON file doesn't have comments (#) and uses double quotes")
         return []
 
 
@@ -75,16 +78,17 @@ def should_post_today(post_date_str: str, logger: logging.Logger) -> bool:
         # Parse the post date (expected format: "2024-12-25 09:00")
         post_datetime = datetime.strptime(post_date_str, "%Y-%m-%d %H:%M")
         
-        # Make it timezone aware
+        # Make it timezone aware (EST/EDT)
         post_datetime = post_datetime.replace(tzinfo=tz.gettz("US/Eastern"))
         
-        # Get current time in EST
+        # Get current time in EST/EDT
         now_est = datetime.now(tz.gettz("US/Eastern"))
         
         # Check if it's the same day
         return post_datetime.date() == now_est.date()
     except ValueError as e:
         logger.error(f"Error parsing post date '{post_date_str}': {e}")
+        logger.error("Date format should be: YYYY-MM-DD HH:MM (e.g., 2026-04-28 08:45)")
         return False
 
 
@@ -96,7 +100,7 @@ def archive_post(post: Dict, current_dir: str, logger: logging.Logger) -> bool:
         
         # Create archive filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        post_id = post.get('id', timestamp)
+        post_id = post.get('image_path', timestamp).replace('/', '_').replace('.', '_')
         archive_path = os.path.join(archive_dir, f"posted_{post_id}_{timestamp}.json")
         
         with open(archive_path, 'w') as f:
@@ -113,7 +117,16 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
     """
     Actual posting logic - REPLACE THIS with your actual posting code
     """
-    logger.info(f"Attempting to post: {post.get('caption', 'No caption')[:50]}...")
+    description = post.get('description', 'No description')
+    image_path = post.get('image_path', '')
+    
+    logger.info(f"Attempting to post: {description[:50]}...")
+    logger.info(f"Image path: {image_path}")
+    
+    # Log extra data if present
+    extra_data = post.get('extra_data', {})
+    if extra_data:
+        logger.info(f"Extra settings: {extra_data}")
     
     # TODO: Add your actual Instagram posting logic here
     # Example with instagrapi:
@@ -121,13 +134,25 @@ def post_to_instagram(post: Dict, logger: logging.Logger) -> bool:
     # client = Client()
     # client.login(username, password)
     # 
-    # if post.get('media_type') == 'photo':
-    #     client.photo_upload(post['media_path'], caption=post['caption'])
-    # elif post.get('media_type') == 'video':
-    #     client.video_upload(post['media_path'], caption=post['caption'])
+    # # Check if image exists
+    # if os.path.exists(image_path):
+    #     client.photo_upload(
+    #         image_path, 
+    #         caption=description,
+    #         extra_data=extra_data
+    #     )
+    # else:
+    #     logger.error(f"Image not found: {image_path}")
+    #     return False
     
-    # Placeholder success
-    logger.warning("Posting logic not implemented - this is a placeholder")
+    # Placeholder success - REPLACE WITH ACTUAL POSTING CODE
+    logger.warning("=== POSTING LOGIC NOT IMPLEMENTED ===")
+    logger.warning(f"This would post: {description}")
+    logger.warning(f"Image: {image_path}")
+    logger.warning("Please implement post_to_instagram() function with your actual Instagram API")
+    
+    # For testing, return True to simulate success
+    # Change to False if you want to test failure handling
     return True
 
 
@@ -166,19 +191,25 @@ def main() -> None:
         
         # Create sample data directory and file
         os.makedirs(os.path.dirname(to_post_path), exist_ok=True)
+        os.makedirs(os.path.join(current_dir, "assets"), exist_ok=True)
+        
         sample_posts = [
             {
-                "id": "1",
+                "image_path": "assets/sample_image.png",
+                "description": "Sample post - Replace with your content",
                 "post_date": datetime.now(tz.gettz("US/Eastern")).strftime("%Y-%m-%d 09:00"),
-                "caption": "Sample post - Replace with your content",
-                "media_type": "photo",
-                "media_path": "path/to/your/media.jpg"
+                "extra_data": {
+                    "custom_accessibility_caption": "Sample accessibility caption",
+                    "like_and_view_counts_disabled": 0,
+                    "disable_comments": 0
+                }
             }
         ]
         with open(to_post_path, 'w') as f:
             json.dump(sample_posts, f, indent=2)
         logger.info(f"Created sample posts file at {to_post_path}")
         logger.warning("Please update data/to-post.json with your actual posts")
+        logger.warning("Remember: No comments (#) allowed in JSON files!")
     
     # Load all posts
     all_posts = load_posts(to_post_path, logger)
@@ -194,13 +225,13 @@ def main() -> None:
     for post in all_posts:
         post_date = post.get('post_date')
         if not post_date:
-            logger.warning(f"Post missing 'post_date' field: {post}")
+            logger.warning(f"Post missing 'post_date' field: {post.get('description', 'Unknown')}")
             remaining_posts.append(post)
             continue
         
         if should_post_today(post_date, logger):
             posts_to_post.append(post)
-            logger.info(f"Post scheduled for today: {post_date}")
+            logger.info(f"✓ Post scheduled for today: {post_date}")
         else:
             remaining_posts.append(post)
             logger.debug(f"Post not scheduled for today: {post_date}")
@@ -210,16 +241,26 @@ def main() -> None:
     failed_posts = []
     
     for post in posts_to_post:
-        logger.info(f"Processing post: {post.get('caption', 'No caption')[:50]}...")
+        logger.info(f"--- Processing post scheduled for {post.get('post_date')} ---")
+        logger.info(f"Description: {post.get('description', 'No description')[:100]}")
+        logger.info(f"Image: {post.get('image_path', 'No image')}")
+        
+        # Check if image exists (warning only, not fatal)
+        image_path = post.get('image_path', '')
+        if image_path and os.path.exists(image_path):
+            logger.info(f"✓ Image found at {image_path}")
+        elif image_path:
+            logger.warning(f"⚠ Image not found at {image_path}")
         
         # Attempt to post
         if post_to_instagram(post, logger):
             successful_posts.append(post)
+            logger.info(f"✓ Successfully posted: {post.get('description', '')[:50]}")
             # Archive successful post
             archive_post(post, current_dir, logger)
         else:
             failed_posts.append(post)
-            logger.error(f"Failed to post: {post.get('caption', 'No caption')[:50]}")
+            logger.error(f"✗ Failed to post: {post.get('description', '')[:50]}")
             remaining_posts.append(post)  # Keep failed posts for retry
     
     # Update the main posts file
@@ -228,7 +269,7 @@ def main() -> None:
     
     # Summary
     logger.info("=" * 60)
-    logger.info(f"POSTING SUMMARY:")
+    logger.info("POSTING SUMMARY:")
     logger.info(f"  Total posts checked: {len(all_posts)}")
     logger.info(f"  Scheduled for today: {len(posts_to_post)}")
     logger.info(f"  Successfully posted: {len(successful_posts)}")
@@ -237,7 +278,7 @@ def main() -> None:
     logger.info("=" * 60)
     
     if failed_posts:
-        logger.warning(f"Failed posts will be retried tomorrow")
+        logger.warning("Failed posts will be retried tomorrow")
         sys.exit(1)  # Exit with error to flag in GitHub Actions
     else:
         logger.info("All scheduled posts processed successfully")
